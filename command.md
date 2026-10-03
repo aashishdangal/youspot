@@ -28,9 +28,15 @@ ytspot URL [OPTIONS]
 `URL` is a YouTube video, playlist, or channel URL. `ytspot URL` is shorthand for
 `ytspot get URL`; both work.
 
+**A link gives you one song unless you ask for more.** Many YouTube links carry
+a video *and* a playlist (`watch?v=...&list=...`); ytspot imports the video.
+`--playlist` takes the whole list, `--items` takes a slice. Always quote the
+URL, or the shell breaks on `&`.
+
 | Option | What it does |
 | --- | --- |
-| `--items TEXT` | Import only part of a playlist: `1-10`, `1,5,8`, `3:12:2` (yt-dlp syntax) |
+| `--playlist`, `-p` | Import the whole playlist instead of one song |
+| `--items TEXT` | Import only part of a playlist: `1-10`, `1,5,8`, `3:12:2` (yt-dlp syntax). Implies `--playlist` |
 | `--album TEXT` | Override the album name (default: playlist name, or `YouTube Imports`) |
 | `--music-dir PATH` | Save somewhere other than the configured folder, just this once |
 | `--quality TEXT` | MP3 bitrate; `320` by default |
@@ -44,8 +50,11 @@ ytspot URL [OPTIONS]
 # single video
 uv run ytspot "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
+# one song, even though the link carries an endless radio mix
+uv run ytspot "https://www.youtube.com/watch?v=...&list=RD...&start_radio=1"
+
 # whole playlist
-uv run ytspot "https://www.youtube.com/playlist?list=PL..."
+uv run ytspot --playlist "https://www.youtube.com/playlist?list=PL..."
 
 # first 10 tracks only
 uv run ytspot "https://www.youtube.com/playlist?list=PL..." --items 1-10
@@ -54,7 +63,7 @@ uv run ytspot "https://www.youtube.com/playlist?list=PL..." --items 1-10
 uv run ytspot "https://www.youtube.com/playlist?list=PL..." --items 1,5,8
 
 # look before you leap
-uv run ytspot "https://www.youtube.com/playlist?list=PL..." --dry-run
+uv run ytspot --playlist "https://www.youtube.com/playlist?list=PL..." --dry-run
 
 # name the album yourself, at a smaller bitrate
 uv run ytspot "https://www.youtube.com/playlist?list=PL..." \

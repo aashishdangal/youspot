@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from yt_dlp import YoutubeDL
 
@@ -77,6 +78,8 @@ class Plan:
     is_playlist: bool
     targets: list[Target]
     album_artist: str | None = None
+    # How many videos the link actually offered, when only some were taken.
+    available: int | None = None
 
     @property
     def total(self) -> int:
@@ -101,8 +104,54 @@ class Result:
         return len(self.failures)
 
 
-def resolve(url: str, items: str | None, singles_album: str) -> Plan:
-    """Flat-extract `url` into a Plan without downloading anything."""
+def video_id_from_url(url: str) -> str | None:
+    """The video a URL points at, ignoring any playlist attached to it.
+
+    A link like watch?v=X&list=RD... names both a video and an auto-generated
+    radio mix, so this is what lets us import the song someone meant.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower()
+    if host.endswith("youtu.be"):
+        return parsed.path.lstrip("/").split("/")[0] or None
+    if "youtube" not in host:
+        return None
+    values = parse_qs(parsed.query).get("v")
+    if values and values[0]:
+        return values[0]
+    for prefix in ("/shorts/", "/live/", "/embed/"):
+        if parsed.path.startswith(prefix):
+            return parsed.path[len(prefix):].split("/")[0] or None
+    return None
+
+
+def resolve(
+    url: str,
+    items: str | None,
+    singles_album: str,
+    playlist: bool = False,
+) -> Plan:
+    """Work out what `url` means, without downloading anything.
+
+    A playlist is only imported whole when asked for: `playlist=True`, or an
+    explicit `items` selection. Otherwise a playlist link yields the single
+    song it points at, because that is nearly always what someone pasting a
+    "watch?v=... &list=..." link wanted.
+    """
+    want_playlist = bool(playlist or items)
+    linked_id = video_id_from_url(url)
+
+    # A watch URL with a list attached, and nobody asked for the list: ask
+    # yt-dlp for just the video. Much faster than resolving a 300-entry radio
+    # mix only to throw it away.
+    if not want_playlist and linked_id:
+        info = _extract(url, {"noplaylist": True})
+        if info and info.get("_type") != "playlist":
+            return _single_plan(info, url, singles_album)
+
     logger = _CollectingLogger()
     opts = {
         "extract_flat": "in_playlist",
@@ -131,6 +180,28 @@ def resolve(url: str, items: str | None, singles_album: str) -> Plan:
                 "The playlist resolved to no playable videos"
                 + (f" for --items {items}" if items else "")
             )
+        if not want_playlist:
+            chosen = next(
+                (e for e in entries if e.get("id") == linked_id), entries[0]
+            )
+            plan = Plan(
+                album=singles_album,
+                is_playlist=False,
+                targets=[
+                    Target(
+                        index=1,
+                        video_id=chosen.get("id") or "",
+                        url=chosen.get("url") or _watch_url(chosen.get("id")),
+                        raw_title=chosen.get("title") or chosen.get("id") or "",
+                        ie_key=chosen.get("ie_key")
+                        or chosen.get("extractor_key")
+                        or "Youtube",
+                    )
+                ],
+                available=len(entries),
+            )
+            return plan
+
         targets = [
             Target(
                 index=position,
@@ -150,6 +221,23 @@ def resolve(url: str, items: str | None, singles_album: str) -> Plan:
         plan.album_artist = _guess_album_artist(plan)
         return plan
 
+    return _single_plan(info, url, singles_album)
+
+
+def _extract(url: str, extra_opts: dict) -> dict | None:
+    """One quiet extraction, shared by the single-video and playlist paths."""
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "logger": _CollectingLogger(),
+        **extra_opts,
+    }
+    with YoutubeDL(opts) as ydl:
+        return ydl.extract_info(url, download=False)
+
+
+def _single_plan(info: dict, url: str, singles_album: str) -> Plan:
     target = Target(
         index=1,
         video_id=info.get("id") or "",

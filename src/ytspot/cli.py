@@ -101,10 +101,18 @@ def _show_dry_run(plan: Plan, destination: Path) -> None:
 @cli.command("get")
 def get(
     url: str = typer.Argument(..., help="A YouTube video or playlist URL."),
+    playlist: bool = typer.Option(
+        False,
+        "--playlist",
+        "-p",
+        help="Import the whole playlist. Without this, a playlist link "
+        "imports only the song it points at.",
+    ),
     items: str = typer.Option(
         None,
         "--items",
-        help="Playlist positions to import, e.g. 1-10, 1,5,8 or 3:12:2.",
+        help="Playlist positions to import, e.g. 1-10, 1,5,8 or 3:12:2. "
+        "Implies --playlist.",
     ),
     music_dir: Path = typer.Option(
         None, "--music-dir", help="Override the configured music folder."
@@ -135,7 +143,12 @@ def get(
 
     typer.echo("Reading URL ...")
     try:
-        plan = downloader.resolve(url, items, cfg.get("singles_album") or "YouTube Imports")
+        plan = downloader.resolve(
+            url,
+            items,
+            cfg.get("singles_album") or "YouTube Imports",
+            playlist=playlist,
+        )
     except ResolveError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -149,6 +162,20 @@ def get(
     if items and not plan.is_playlist:
         typer.secho(
             "--items only applies to playlists; importing the single video.",
+            fg=typer.colors.YELLOW,
+        )
+
+    if plan.available and plan.available > 1:
+        # The link held a playlist that nobody asked to import whole.
+        typer.secho(
+            f"This link also holds a playlist of {plan.available} videos. "
+            "Importing just the one song.",
+            fg=typer.colors.YELLOW,
+        )
+        typer.echo("Use --playlist for all of it, or --items 1-10 for part.\n")
+    elif playlist and not plan.is_playlist:
+        typer.secho(
+            "--playlist was given but this link is a single video.",
             fg=typer.colors.YELLOW,
         )
 
