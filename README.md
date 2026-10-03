@@ -30,22 +30,43 @@ Failures:
 
 ### 1. Install the prerequisites
 
+ytspot needs **FFmpeg** (does the MP3 conversion; ytspot refuses to run without
+it) and **uv** (manages Python and the dependencies — it brings its own Python,
+which matters because yt-dlp needs 3.10+ and macOS still ships 3.9).
+
+**macOS:**
+
 ```bash
 brew install uv ffmpeg
 ```
 
-- **FFmpeg** does the MP3 conversion. ytspot refuses to run without it.
-- **uv** manages Python and the dependencies. It brings its own Python, which
-  matters here: yt-dlp needs Python 3.10+, and macOS still ships 3.9.
+**Windows** (PowerShell):
 
-No Homebrew? Get it from [brew.sh](https://brew.sh), or install uv via
-`curl -LsSf https://astral.sh/uv/install.sh | sh` and FFmpeg from
-[ffmpeg.org/download.html](https://ffmpeg.org/download.html).
+```powershell
+winget install astral-sh.uv
+winget install Gyan.FFmpeg
+```
+
+Then **close and reopen PowerShell** so the new PATH takes effect. Prefer
+Chocolatey? `choco install uv ffmpeg`. Scoop? `scoop install uv ffmpeg`.
+
+**Linux:**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+sudo apt install ffmpeg          # or your distro's equivalent
+```
+
+No package manager at all? uv has installers at
+[docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/) and
+FFmpeg builds at [ffmpeg.org/download.html](https://ffmpeg.org/download.html) —
+on Windows, make sure the folder holding `ffmpeg.exe` is on your PATH.
 
 ### 2. Install ytspot
 
 ```bash
-git clone <this repo> ytspot && cd ytspot
+git clone <this repo> ytspot
+cd ytspot
 uv sync
 ```
 
@@ -63,19 +84,46 @@ The first import asks where to save files and remembers the answer:
 $ uv run ytspot "https://www.youtube.com/watch?v=..."
 First run: ytspot needs a folder to save imported MP3s.
 Use the folder you have added (or will add) to
-Spotify > Settings > Local Files > Add a source.
+Spotify > Settings > Library > Show Local Files > Add a source.
 Music folder [/Users/you/Music/ytspot]:
 ```
 
 ### 4. Point Spotify at the folder
 
-In the **desktop** app: **Settings → Local Files →** turn on *Show songs from* →
-**Add a source** → choose the folder from step 3. Your imports appear under
-*Your Library → Local Files*, grouped by album.
+This is a few steps and easy to get half-done, so in full.
 
-Two things worth knowing: local files only work in the desktop and mobile apps,
-not the web player, and to hear them on your phone you add them to a playlist,
-then download that playlist with both devices on the same Wi-Fi.
+**On desktop** (Windows or Mac — the web player cannot play local files at all):
+
+1. Click your **profile picture** (top right) → **Settings**
+2. Scroll to the **Library** section
+3. Turn on **Show Local Files**
+4. Under **Show songs from**, click **Add a source**
+5. Pick the folder from step 3 — the folder itself, *not* the album subfolder
+   inside it. ytspot creates one subfolder per playlist and Spotify scans
+   recursively, so adding the parent once covers every future import.
+6. **Quit Spotify completely and reopen it** (Cmd+Q on Mac, not just closing
+   the window). It only scans on launch.
+7. **Your Library** → **Local Files**
+
+Your imports appear grouped by album — the playlist name, or `YouTube Imports`
+for single videos.
+
+**To actually live with them**, add the tracks to a real playlist: right-click →
+*Add to playlist*. Local files can't be shuffled into your normal listening or
+reached by search until they're in one.
+
+**On your phone** (iOS and Android are the same now):
+
+1. Tap your **profile picture** → **Settings and privacy**
+2. Tap **Apps and devices**
+3. Turn on **Local audio files**
+4. **Your Library** → **Local Files**
+
+The catch: the files have to be **physically on the phone**. Spotify no longer
+syncs local files from your desktop over Wi-Fi, so you transfer the MP3s
+yourself — AirDrop or a USB cable to the Files app on iOS, USB file transfer on
+Android — and may have to grant Spotify storage access in your device settings.
+If you only ever listen on desktop, ignore this section.
 
 ## Usage
 
@@ -133,15 +181,23 @@ YouTube Music links (`music.youtube.com`) give noticeably better tags than
 
 ## Skipping what you already have
 
-Every imported video ID is recorded in `~/.config/ytspot/archive.txt`
-(yt-dlp's download-archive format). Re-running the same playlist only fetches
+Every imported video ID is recorded in an archive file — `~/.config/ytspot/archive.txt`,
+or `%APPDATA%\ytspot\archive.txt` on Windows (yt-dlp's download-archive format). Re-running the same playlist only fetches
 what's new, which makes `ytspot <playlist url>` a reasonable thing to run
 occasionally on a playlist you follow. Use `--no-archive` to force a
 re-download, or delete lines from that file to forget specific videos.
 
 ## Configuration
 
-`~/.config/ytspot/config.json` (override the location with `$YTSPOT_CONFIG`):
+The config file lives at:
+
+| Platform | Path |
+| --- | --- |
+| macOS / Linux | `~/.config/ytspot/config.json` |
+| Windows | `%APPDATA%\ytspot\config.json` |
+
+Set the `YTSPOT_CONFIG` environment variable to use a different file. Run
+`ytspot config` to print the path in use along with the current settings.
 
 ```json
 {
@@ -152,14 +208,31 @@ re-download, or delete lines from that file to forget specific videos.
 }
 ```
 
+On Windows the paths use backslashes, which must be escaped in JSON
+(`"C:\\Users\\you\\Music\\ytspot"`) — easier to let
+`ytspot config --set-music-dir` write it for you.
+
 ## Troubleshooting
 
-**"FFmpeg was not found on your PATH"** — `brew install ffmpeg`, then open a new
-terminal.
+**"FFmpeg was not found on your PATH"** — install it (step 1 above), then open
+a **new** terminal so it picks up the changed PATH. On Windows, check it with
+`ffmpeg -version`; if that fails after installing, the install folder isn't on
+your PATH.
 
-**Tracks don't show up in Spotify** — confirm the folder is listed under
-Settings → Local Files, then restart Spotify; it only rescans on launch. Check
-the files are where you expect with `ytspot config`.
+**Tracks don't show up in Spotify** — work down this list:
+
+1. Did you **fully quit** Spotify and reopen it? Cmd+Q on Mac, or right-click
+   the tray icon and Quit on Windows. It only scans on launch, and closing the
+   window isn't quitting.
+2. Is **Show Local Files** still on, and is your folder still listed under
+   *Show songs from*? Spotify drops sources after some updates.
+3. Are the files where you think they are? `ytspot config` prints the folder.
+4. Are you on the **web player**? It can't play local files at all.
+5. Still nothing — remove the source, re-add it, and restart again. That
+   rebuilds the index.
+
+**Tracks play but look wrong** (no artist, odd titles) — Spotify caches its
+index. Removing and re-adding the source picks up re-tagged files.
 
 **Cover art missing** — a few videos have no usable thumbnail. The rest of the
 tags are still written.
@@ -172,8 +245,13 @@ fixes it: YouTube changes break older yt-dlp versions regularly.
 ## Development
 
 ```bash
-uv run pytest        # title-parsing tests (no network)
+uv run pytest                           # unit tests, no network, instant
+uv run python scripts/smoke_test.py     # real end-to-end checks, a few minutes
 ```
+
+Both work on macOS, Linux and Windows. The smoke test downloads a few tracks
+into a temp folder with its own config and checks the output, so your real
+library and config are untouched.
 
 The title cleanup in `src/ytspot/titles.py` is pure functions, so new
 real-world junk patterns can be added to `tests/test_titles.py` and fixed

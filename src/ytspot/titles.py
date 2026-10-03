@@ -6,6 +6,7 @@ unit-testable (see tests/test_titles.py).
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 
@@ -105,8 +106,17 @@ _QUOTE_PAIRS = [('"', '"'), ("'", "'"), ("“", "”"), ("‘", "’")]
 
 _MAX_ARTIST_LEN = 60
 _MAX_ARTIST_WORDS = 6
-_MAX_FILENAME_LEN = 180
+# Windows caps a full path at 260 characters by default, so components are
+# kept shorter there to leave room for the music folder and album folder.
+_MAX_FILENAME_LEN = 120 if os.name == "nt" else 180
 _ILLEGAL_FILENAME = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
+
+# Names Windows refuses outright, with or without an extension.
+_RESERVED_NAMES = frozenset(
+    ["con", "prn", "aux", "nul"]
+    + [f"com{n}" for n in range(1, 10)]
+    + [f"lpt{n}" for n in range(1, 10)]
+)
 
 
 def _strip_brackets(text: str) -> str:
@@ -213,12 +223,24 @@ def split_artist_title(raw_title: str, info: dict | None = None) -> tuple[str, s
 
 
 def safe_filename(name: str, fallback: str = "untitled") -> str:
-    """Make a string safe to use as a single path component."""
+    """Make a string safe to use as a single path component.
+
+    Satisfies the stricter of the platforms' rules, so a library created on a
+    Mac still copies to a Windows machine: no reserved device names, no
+    trailing dots or spaces, and no characters either OS rejects.
+    """
     text = unicodedata.normalize("NFC", name or "")
     text = _ILLEGAL_FILENAME.sub("_", text)
-    text = _WS.sub(" ", text).strip().strip(".")
+    text = _WS.sub(" ", text).strip()
+    # Windows rejects trailing dots and spaces, and stripping one can expose
+    # the other ("name . " -> "name ."  -> "name ").
+    while text and text[-1] in " .":
+        text = text[:-1]
+    text = text.lstrip(".")
     if len(text) > _MAX_FILENAME_LEN:
-        text = text[:_MAX_FILENAME_LEN].rstrip()
+        text = text[:_MAX_FILENAME_LEN].rstrip(" .")
+    if text.split(".")[0].lower() in _RESERVED_NAMES:
+        text = f"_{text}"
     return text or fallback
 
 

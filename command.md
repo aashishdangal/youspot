@@ -9,7 +9,9 @@ installed it globally with `uv tool install .`, in which case plain `ytspot` wor
 
 | Command | What it does |
 | --- | --- |
-| `brew install uv ffmpeg` | Installs the two prerequisites. FFmpeg does the MP3 conversion; uv brings its own Python (yt-dlp needs 3.10+, macOS ships 3.9) |
+| `brew install uv ffmpeg` | **macOS:** installs the two prerequisites |
+| `winget install astral-sh.uv` + `winget install Gyan.FFmpeg` | **Windows:** same, then reopen your terminal so PATH updates |
+| `curl -LsSf https://astral.sh/uv/install.sh \| sh` + `sudo apt install ffmpeg` | **Linux:** same |
 | `uv sync` | Creates `.venv` and installs all dependencies from `uv.lock` |
 | `uv sync --upgrade` | Upgrades dependencies — the fix when YouTube changes break yt-dlp |
 | `uv tool install .` | Optional: puts a global `ytspot` on your PATH |
@@ -72,8 +74,10 @@ uv run ytspot "https://www.youtube.com/watch?v=..." --no-archive
 | `ytspot config --show` | Same thing, explicitly |
 | `ytspot config --set-music-dir PATH` | Change where MP3s are saved (creates the folder) |
 
-The config lives at `~/.config/ytspot/config.json`; set `$YTSPOT_CONFIG` to use a
+The config lives at `~/.config/ytspot/config.json`, or
+`%APPDATA%\ytspot\config.json` on Windows; set `YTSPOT_CONFIG` to use a
 different file. The first import prompts for the music folder if none is set.
+`ytspot config` always prints the path actually in use.
 
 ```bash
 uv run ytspot config
@@ -117,7 +121,51 @@ What they cover:
 Add a new real-world junk title to `tests/test_titles.py` and fix it in
 `src/ytspot/titles.py` — that layer is pure functions, so nothing else is involved.
 
+### Automated end-to-end test
+
+One command runs the whole chain for real — downloads, conversion, tagging,
+skip logic, failure handling — and checks the results:
+
+```bash
+uv run python scripts/smoke_test.py          # run and clean up
+uv run python scripts/smoke_test.py --keep   # leave the files to inspect
+```
+
+Works on macOS, Linux and Windows. It runs in a temp folder with its own
+config, so **your real music library and config are never touched**. Takes a
+few minutes (it really downloads tracks) and prints `All 22 checks passed.` or
+a list of what failed. Exit code is 0 only if everything passed, so it works in
+CI.
+
+What it verifies:
+
+| Step | Checks |
+| --- | --- |
+| 1 | The unit tests pass |
+| 2 | `--help` and `config` work against the sandbox |
+| 3 | `--dry-run` reports a plan and writes nothing to disk |
+| 4 | A 2-track playlist imports: exit 0, `Imported 2`, `[1/2]` counter, then per-file tags — ID3v2.3, ~320kbps, title/artist/album/album-artist set, JPEG cover art over 1KB, `TRCK 1/2` and `2/2`, `01 - ` / `02 - ` filename prefixes, no stray files, and 2 IDs in the archive |
+| 5 | Re-running a recorded video skips it, imports nothing, writes no new files |
+| 6 | A single video at `--quality 192`: album is `YouTube Imports`, ~192kbps, **no** track number |
+| 7 | `--items 1-1` plans exactly one track |
+| 8 | An unavailable video exits 1 and names the real reason |
+
+The tag assertions live in `scripts/check_tags.py`, which you can also point at
+your own imports:
+
+```bash
+uv run python scripts/check_tags.py ~/Music/ytspot/"Some Playlist" \
+  --expect-tracks 12 --expect-album "Some Playlist" --numbered
+```
+
 ### Manual end-to-end testing
+
+The smoke test above covers this ground automatically; do this by hand when you
+want to check **your own** URLs and how their titles come out.
+
+> On Windows, run these in **Git Bash** or **WSL**, or translate the `export`
+> lines to PowerShell (`$env:YTSPOT_CONFIG = "..."`). The automated smoke test
+> above needs no translation — it runs natively everywhere.
 
 Use a throwaway config so your real settings and music folder stay untouched:
 
@@ -206,11 +254,18 @@ unset YTSPOT_CONFIG
 
 The part no script can check for you:
 
-1. Spotify **desktop** → Settings → Local Files → turn on *Show songs from* →
-   **Add a source** → select your music folder.
-2. Restart Spotify; it only rescans on launch.
-3. Your Library → Local Files. Tracks should be grouped under the album name,
-   with cover art.
+1. Profile picture → **Settings** → **Library** section → turn on
+   **Show Local Files**.
+2. Under **Show songs from** → **Add a source** → select your music folder
+   (the parent, not an album subfolder — Spotify scans recursively).
+3. **Fully quit** Spotify and reopen it (Cmd+Q on Mac; tray icon → Quit on
+   Windows). It only scans on launch.
+4. Your Library → **Local Files**. Tracks should be grouped under the album
+   name, with cover art.
+5. Right-click → *Add to playlist* if you want them in normal rotation; local
+   files aren't searchable or shuffleable until they're in a playlist.
 
-Local files don't work in the web player. To hear them on your phone, add them to
-a playlist and download that playlist with both devices on the same Wi-Fi.
+The web player can't play local files at all. On mobile it's profile →
+**Settings and privacy** → **Apps and devices** → **Local audio files**, but the
+MP3s have to be physically on the phone — Spotify no longer syncs them from
+desktop over Wi-Fi.

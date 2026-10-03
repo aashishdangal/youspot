@@ -116,7 +116,41 @@ def test_safe_filename_falls_back_when_empty():
 
 
 def test_safe_filename_is_length_capped():
-    assert len(titles.safe_filename("x" * 400)) == 180
+    assert len(titles.safe_filename("x" * 400)) == titles._MAX_FILENAME_LEN
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["CON", "con", "nul", "PRN.mp3", "aux", "COM1", "lpt9"],
+)
+def test_safe_filename_escapes_windows_reserved_names(raw):
+    # Windows refuses these outright, extension or not.
+    assert titles.safe_filename(raw).startswith("_")
+
+
+def test_safe_filename_keeps_names_that_merely_contain_a_reserved_word():
+    assert titles.safe_filename("Console") == "Console"
+    assert titles.safe_filename("Aux Cable") == "Aux Cable"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("name.", "name"),
+        ("name ", "name"),
+        ("name . ", "name"),
+        ("name...  ", "name"),
+        (".hidden", "hidden"),
+    ],
+)
+def test_safe_filename_removes_trailing_dots_and_spaces(raw, expected):
+    # Windows rejects both, and stripping one can expose the other.
+    assert titles.safe_filename(raw) == expected
+
+
+def test_track_filename_stays_within_the_length_cap():
+    name = titles.track_filename("A" * 300, "B" * 300, 7)
+    assert len(name) <= titles._MAX_FILENAME_LEN + len("07 - ") + len(".mp3")
 
 
 def test_track_filename_shapes():

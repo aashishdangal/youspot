@@ -9,7 +9,26 @@ from typing import Any
 
 import typer
 
-DEFAULT_CONFIG_DIR = Path.home() / ".config" / "ytspot"
+_LEGACY_CONFIG_DIR = Path.home() / ".config" / "ytspot"
+
+
+def _choose_config_dir(os_name: str, appdata: str | None) -> Path:
+    """The decision, kept pure so both platforms are testable on either.
+
+    (Faking os.name wholesale is not an option: pathlib then tries to build a
+    WindowsPath and refuses to do so on a POSIX machine.)
+    """
+    if os_name == "nt" and appdata:
+        return Path(appdata) / "ytspot"
+    return _LEGACY_CONFIG_DIR
+
+
+def default_config_dir() -> Path:
+    """Where config lives: %APPDATA% on Windows, ~/.config elsewhere."""
+    return _choose_config_dir(os.name, os.environ.get("APPDATA"))
+
+
+DEFAULT_CONFIG_DIR = default_config_dir()
 
 DEFAULTS: dict[str, Any] = {
     "music_dir": "",
@@ -23,7 +42,12 @@ def config_path() -> Path:
     override = os.environ.get("YTSPOT_CONFIG")
     if override:
         return Path(override).expanduser()
-    return DEFAULT_CONFIG_DIR / "config.json"
+    preferred = DEFAULT_CONFIG_DIR / "config.json"
+    # Keep using a config written before this moved to %APPDATA%.
+    legacy = _LEGACY_CONFIG_DIR / "config.json"
+    if not preferred.is_file() and legacy.is_file():
+        return legacy
+    return preferred
 
 
 def read_config() -> dict[str, Any] | None:
@@ -56,7 +80,7 @@ def load_config() -> dict[str, Any]:
     typer.secho("First run: ytspot needs a folder to save imported MP3s.", bold=True)
     typer.echo(
         "Use the folder you have added (or will add) to\n"
-        "Spotify > Settings > Local Files > Add a source."
+        "Spotify > Settings > Library > Show Local Files > Add a source."
     )
     default = str(Path.home() / "Music" / "ytspot")
     answer = typer.prompt("Music folder", default=default)

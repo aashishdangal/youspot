@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -62,11 +63,19 @@ class Reporter:
         self._open_line = False
 
 
+def _ffmpeg_install_hint() -> str:
+    if sys.platform == "darwin":
+        return "brew install ffmpeg"
+    if os.name == "nt":
+        return "winget install Gyan.FFmpeg      (or: choco install ffmpeg)"
+    return "sudo apt install ffmpeg            (or your distro's equivalent)"
+
+
 def _require_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
         typer.secho(
             "FFmpeg was not found on your PATH. ytspot needs it to make MP3s.\n"
-            "Install it with:  brew install ffmpeg",
+            f"Install it with:  {_ffmpeg_install_hint()}",
             fg=typer.colors.RED,
             err=True,
         )
@@ -176,8 +185,8 @@ def get(
 
     if result.imported:
         typer.echo(
-            "\nIf these are new to Spotify: Settings > Local Files > Add a source, "
-            "then pick the folder above."
+            "\nNew to Spotify? Settings > Library > Show Local Files > "
+            "Add a source, then pick the folder above and restart Spotify."
         )
 
 
@@ -216,6 +225,14 @@ def app() -> None:
     Lets `ytspot <url>` work as a shorthand for `ytspot get <url>`, while
     keeping `ytspot config` available as a subcommand.
     """
+    # Video titles are full of characters a legacy Windows console cannot
+    # encode; replacing them beats crashing halfway through a playlist.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, OSError):
+            pass
+
     argv = sys.argv[1:]
     if argv and not argv[0].startswith("-") and argv[0] not in {"get", "config"}:
         argv = ["get", *argv]
