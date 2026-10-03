@@ -23,6 +23,18 @@ you get the one song it points at. Add `--playlist` for everything, or
 Run it again on the same link and it only grabs the new stuff. If one video is
 broken, the rest still download.
 
+## Getting started
+
+Four steps, once:
+
+1. [Install two things first](#1-install-two-things-first) — ffmpeg and uv
+2. [Install ytspot](#2-install-ytspot)
+3. [Run it once](#3-run-it-once) — it asks where to save your music
+4. [Set up Spotify](#4-set-up-spotify-turn-on-local-files) — turn on Local Files
+   and point it at that folder
+
+Already set up? Jump to [How to use it](#how-to-use-it).
+
 ## 1. Install two things first
 
 **Mac:**
@@ -73,9 +85,10 @@ ytspot "https://www.youtube.com/watch?v=..."
 The first time, it asks where to save your music. Press Enter to use the
 suggested folder (`~/Music/ytspot`), or type your own. It remembers your answer.
 
-## 4. Tell Spotify where to look
+## 4. Set up Spotify (turn on Local Files)
 
-Do this once, in the Spotify desktop app:
+Do this once, in the Spotify desktop app. Without it your songs download fine
+but never show up in Spotify.
 
 1. Click your **profile picture** (top right) → **Settings**
 2. Scroll down to **Library**
